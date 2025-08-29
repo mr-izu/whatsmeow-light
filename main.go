@@ -6,28 +6,48 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/mdp/qrterminal/v3"
 	_ "github.com/lib/pq"
 
-	// NOTE: depending on your checkout / module, you may need to change these imports.
-	// If your repo/module uses "go.mau.fi/whatsmeow" replace accordingly.
-	"github.com/tulir/whatsmeow"                 // if your module is different, change to go.mau.fi/whatsmeow
-	"github.com/tulir/whatsmeow/store/sqlstore" // adjust path if needed
-	"github.com/tulir/whatsmeow/types/events"   // adjust path if needed
-	"github.com/tulir/whatsmeow/types/proto"    // adjust path if needed
-
-	"context"
+	// NOTE: if your local checkout / module path differs (e.g. go.mau.fi/whatsmeow),
+	// replace these imports with the correct paths used in your repo.
+	"github.com/tulir/whatsmeow"
+	"github.com/tulir/whatsmeow/store/sqlstore"
+	"github.com/tulir/whatsmeow/types/events"
+	"github.com/tulir/whatsmeow/types/proto"
 )
 
-func main() {
-	// postgres DSN from env or default (change user/password/dbname as needed)
-	dsn := os.Getenv("POSTGRES_DSN")
-	if dsn == "" {
-		// Example DSN: "postgres://user:pass@localhost:5432/whatsmeow?sslmode=disable"
-		dsn = "postgres://postgres:postgres@localhost:5432/whatsmeow?sslmode=disable"
+func ensureSSLMode(dsn string) string {
+	// If the DSN already contains sslmode=, leave it alone.
+	if strings.Contains(dsn, "sslmode=") {
+		return dsn
 	}
+	// If DSN already has query params, append sslmode=require, otherwise add it.
+	if strings.Contains(dsn, "?") {
+		return dsn + "&sslmode=require"
+	}
+	return dsn + "?sslmode=require"
+}
+
+func main() {
+	// Prefer DATABASE_URL (common on cloud providers); fallback to POSTGRES_DSN; then default local example
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		dsn = os.Getenv("POSTGRES_DSN")
+	}
+	if dsn == "" {
+		// Local default (only for local testing)
+		dsn = "postgres://postgres:postgres@localhost:5432/whatsmeow?sslmode=disable"
+		log.Println("POSTGRES_DSN / DATABASE_URL not set, falling back to local default (sslmode=disable)")
+	} else {
+		// For cloud-hosted Postgres, ensure sslmode is set (most cloud providers require SSL)
+		dsn = ensureSSLMode(dsn)
+	}
+
+	log.Println("Using Postgres DSN from environment (password hidden)")
 
 	// Create SQL store (this will create tables if required)
 	db, err := sqlstore.New("postgres", dsn, nil)
@@ -72,6 +92,7 @@ func main() {
 	})
 
 	// If we are not logged in, start QR pairing
+	// Note: depending on whatsmeow version the store ID check might differ; adjust if needed.
 	if client.Store.ID == nil {
 		// Get a QR channel and print QR to terminal
 		qrChan, err := client.GetQRChannel(context.Background())
@@ -85,7 +106,6 @@ func main() {
 				switch evt.Event {
 				case "code":
 					fmt.Println("Scan the following QR/pair code with your phone (or read the code):")
-					// evt.Code contains the pairing code / qrcode string
 					qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
 					fmt.Println("\nPair code:", evt.Code)
 				case "success":
