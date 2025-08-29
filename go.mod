@@ -1,4 +1,4 @@
-module github.com/yourusername/whatsmeow-light
+module github.com/mr-izu/whatsmeow-light
 
 go 1.20
 
