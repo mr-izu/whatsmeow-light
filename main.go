@@ -4,19 +4,20 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/mdp/qrterminal/v3"
 	_ "github.com/lib/pq"
 
-	// NOTE: if your local checkout / module path differs (e.g. go.mau.fi/whatsmeow),
-	// replace these imports with the correct paths used in your repo.
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types/events"
+	"go.mau.fi/whatsmeow/types/proto" // Added missing proto import
 )
 
 func ensureSSLMode(dsn string) string {
@@ -31,7 +32,38 @@ func ensureSSLMode(dsn string) string {
 	return dsn + "?sslmode=require"
 }
 
+// Health check handler
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status": "ok", "service": "whatsmeow-light"}`))
+}
+
 func main() {
+	// Get port from environment variable or default to 3000
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+		log.Printf("PORT not set, defaulting to %s", port)
+	}
+
+	// Start HTTP server for health checks
+	http.HandleFunc("/", healthHandler)
+	http.HandleFunc("/health", healthHandler)
+	
+	server := &http.Server{
+		Addr:         ":" + port,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	go func() {
+		log.Printf("Starting HTTP server on port %s", port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("HTTP server error: %v", err)
+		}
+	}()
+
 	// Prefer DATABASE_URL (common on cloud providers); fallback to POSTGRES_DSN; then default local example
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -91,7 +123,6 @@ func main() {
 	})
 
 	// If we are not logged in, start QR pairing
-	// Note: depending on whatsmeow version the store ID check might differ; adjust if needed.
 	if client.Store.ID == nil {
 		// Get a QR channel and print QR to terminal
 		qrChan, err := client.GetQRChannel(context.Background())
@@ -128,5 +159,15 @@ func main() {
 	<-sigCh
 
 	fmt.Println("Shutting down...")
+	
+	// Graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
+	}
+	
 	client.Disconnect()
+	log.Println("Server shutdown complete")
 }
