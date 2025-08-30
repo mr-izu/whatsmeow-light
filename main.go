@@ -17,7 +17,6 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types/events"
-	"go.mau.fi/whatsmeow/types/proto"
 )
 
 func ensureSSLMode(dsn string) string {
