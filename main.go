@@ -14,10 +14,10 @@ import (
 
 	// NOTE: if your local checkout / module path differs (e.g. go.mau.fi/whatsmeow),
 	// replace these imports with the correct paths used in your repo.
-	"github.com/tulir/whatsmeow"
-	"github.com/tulir/whatsmeow/store/sqlstore"
-	"github.com/tulir/whatsmeow/types/events"
-	"github.com/tulir/whatsmeow/types/proto"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types/events"
+	"go.mau.fi/whatsmeow/types/proto"
 )
 
 func ensureSSLMode(dsn string) string {
